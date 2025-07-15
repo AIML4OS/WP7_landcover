@@ -1,3 +1,19 @@
+"""
+This script converts all .ECW files in a specified folder to GeoTIFF (.TIF) format
+using GDAL, with lossless compression (LZW), tiling enabled, and BigTIFF support.
+
+IMPORTANT:
+Run this script from the OSGeo4W Shell (or QGIS Python environment),
+as it relies on GDAL with ECW driver support that is typically included there.
+
+To execute the script, open the OSGeo4W Shell and run:
+
+python conversionECW2TIF.py
+
+"""
+
+
+
 
 import os
 from osgeo import gdal
