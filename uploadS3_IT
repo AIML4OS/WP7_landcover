@@ -1,0 +1,65 @@
+import os
+import boto3
+from botocore.exceptions import ClientError
+
+# --- Configuration ---
+HTTP_PROXY      = 'http://proxy:8080' # if you have a proxy
+HTTPS_PROXY     = 'http://proxy:8080' # if you have a proxy
+ACCESS_KEY      = ".."
+SECRET_KEY      = ".."
+ENDPOINT_URL    = 'https://s3.waw3-2.cloudferro.com'
+BUCKET_NAME     = 'ITS3'
+DIR_INF         = r"Y:\Veneto 2021\INF" #local directory INF
+DIR_RGB         = r"Y:\Veneto 2021\RGB" #local directory RGN
+REMOTE_INF_PATH = "veneto/inf/"
+REMOTE_RGB_PATH = "veneto/rgb/"
+
+# --- Proxy settings ---
+os.environ['HTTP_PROXY']  = HTTP_PROXY
+os.environ['HTTPS_PROXY'] = HTTPS_PROXY
+
+# --- S3 client ---
+s3 = boto3.client(
+    's3',
+    aws_access_key_id=ACCESS_KEY,
+    aws_secret_access_key=SECRET_KEY,
+    endpoint_url=ENDPOINT_URL,
+)
+
+def object_exists(bucket, key):
+    try:
+        s3.head_object(Bucket=bucket, Key=key)
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return False
+        raise
+
+# --- List buckets ---
+response = s3.list_buckets()
+print("Buckets visible with these credentials:")
+for bucket in response['Buckets']:
+    print("-", bucket['Name'])
+
+# --- Upload INF ---
+files =os.listdir(DIR_INF)
+for file in files:
+    local_path = os.path.join(DIR_INF, file)
+    remote_path = REMOTE_INF_PATH + file
+    if object_exists(BUCKET_NAME, remote_path):
+        print("Skipped (already exists):", remote_path)
+        continue
+    s3.upload_file(local_path, BUCKET_NAME, remote_path)
+    print("Uploaded:", file, "->", remote_path)
+
+# --- Upload RGB ---
+files = os.listdir(DIR_RGB)
+for i, file in enumerate(files):
+    local_path = os.path.join(DIR_RGB, file)
+    remote_path = REMOTE_RGB_PATH + file
+    if object_exists(BUCKET_NAME, remote_path):
+        print("Skipped (already exists):", remote_path)
+        continue
+    print("N:", i, "-", int(i / len(files) * 100), "%")
+    s3.upload_file(local_path, BUCKET_NAME, remote_path)
+    print("Uploaded:", file, "->", remote_path)
