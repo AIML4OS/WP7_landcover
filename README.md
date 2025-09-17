@@ -6,3 +6,4 @@ Short description of the scripts and use:
 + **RunProcess.py**: runs the model for inference
 + **IT_CONFIG.ini**: parameters needed for the previous scripts, you need to insert here the access key and the secret key; note: must be in the same folder of the scripts; 
 + **proto.yaml**: prototype to be modified by the RunProcess.py script
++ **flair-detection.sh**: shell commands to run flair-detect from RunProcess.py ; do not edit
