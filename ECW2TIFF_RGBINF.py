@@ -19,7 +19,7 @@ from botocore.exceptions import NoCredentialsError
 
 # === Load configuration from AIML4OS.ini file ===
 base_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(base_dir, "AIML4OS.ini")  # Config file must be in the same folder as this script
+config_path = os.path.join(base_dir, "IT_CONFIG.ini")  # Config file must be in the same folder as this script
 
 config_object = ConfigParser()
 config_object.read(os.path.realpath(config_path))
@@ -128,3 +128,4 @@ for filename in os.listdir(input_folder):
             print(f"Error uploading '{filename}': {e}")
 
 print("All conversions completed.")
+
