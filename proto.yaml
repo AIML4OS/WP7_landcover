@@ -1,0 +1,32 @@
+output_path: "../output/"
+output_name: "testBO"
+
+input_img_path: "../tryout/testBO.tif"
+channels: [1, 2, 3]
+
+img_pixels_detection: 2048
+margin: 128
+output_type: "argmax"
+n_classes: 19
+
+
+model_weights: "../flair-models/flair_cosia_swin-small-rgb_upernet_custom.ckpt"  #e.g., FLAIR-INC_rgbie_15cl_resnet34-unet_weights.pth
+model_framework:
+    model_provider: HuggingFace
+
+    HuggingFace:
+        org_model: openmmlab/upernet-swin-small
+    SegmentationModelsPytorch:
+        encoder_decoder: resnet34_unet
+
+
+batch_size: 1
+use_gpu: True
+num_worker: 8
+
+write_dataframe: False
+
+norma_task:
+  - norm_type: custom
+    norm_means: [105.08, 110.87, 101.82]
+    norm_stds: [52.17, 45.38, 44]
