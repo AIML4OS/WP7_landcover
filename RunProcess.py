@@ -75,7 +75,7 @@ s3 = boto3.client('s3',
 
 # Print available buckets
 response = s3.list_buckets()
-print("📦 Buckets visible with specified keys:")
+print(" Buckets visible with specified keys:")
 for bucket in response['Buckets']:
     print("-", bucket['Name'])
 
@@ -127,3 +127,4 @@ if 'Contents' in response:
         break  # stop after processing the first file
 else:
     print("No file found in the specified bucket/prefix")
+
