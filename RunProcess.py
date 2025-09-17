@@ -4,9 +4,9 @@ import time
 from datetime import datetime
 from configparser import ConfigParser
 
-# === Load configuration from AIML4OS.ini file ===
+# === Load configuration from IT_CONFIG.ini file ===
 base_dir = os.path.dirname(os.path.abspath(__file__))
-config_path = os.path.join(base_dir, "AIML4OS.ini")  # Config file must be in the same folder as this script
+config_path = os.path.join(base_dir, "IT_CONFIG.ini")  # Config file must be in the same folder as this script
 
 config_object = ConfigParser()
 config_object.read(os.path.realpath(config_path))
@@ -127,4 +127,5 @@ if 'Contents' in response:
         break  # stop after processing the first file
 else:
     print("No file found in the specified bucket/prefix")
+
 
