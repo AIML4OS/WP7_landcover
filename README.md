@@ -13,6 +13,6 @@ IT Scripts
 + **1_bash_run_flair.txt** run Flair
 + **run_flair.py**  This script runs the flair model using the correct settings file
 + **extract_output_info_matching_coord.py** This script gets the predicted classes from the flair model stored in .tif files for the pixel closest to each of the sampled coordinates 
-# and stores these as well as additional metadata (pixel row/col, pixel number, pixel midpoint coordinates, sampled coordinates, band-value = class)
-# make sure to change the output file as well as the location of the model output files.
+ and stores these as well as additional metadata (pixel row/col, pixel number, pixel midpoint coordinates, sampled coordinates, band-value = class)
+ make sure to change the output file as well as the location of the model output files.
 
