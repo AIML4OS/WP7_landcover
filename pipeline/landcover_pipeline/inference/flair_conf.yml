@@ -1,0 +1,32 @@
+output_path: "/tmp/flair_out_9he5bq8p"
+output_name: "634024_RGB"
+
+input_img_path: "/tmp/flair_634024_RGB_5o2wtoj6/634024_RGB.tif"
+channels: [1, 2, 3]
+
+img_pixels_detection: 2048
+margin: 128
+output_type: "argmax"
+n_classes: 19
+
+
+model_weights: "../flair-models/flair_cosia_swin-large-rgb_upernet_custom.ckpt"  #e.g., FLAIR-INC_rgbie_15cl_resnet34-unet_weights.pth
+model_framework:
+  model_provider: HuggingFace
+
+  HuggingFace:
+    org_model: openmmlab/upernet-swin-large
+  SegmentationModelsPytorch:
+    encoder_decoder: resnet34_unet
+
+
+batch_size: 1
+use_gpu: true
+num_worker: 8
+
+write_dataframe: false
+
+norma_task:
+  - norm_type: custom
+    norm_means: [105.35, 111.31, 102.09]
+    norm_stds: [52.36, 45.63, 44.39]

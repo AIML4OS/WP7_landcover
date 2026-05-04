@@ -1,0 +1,31 @@
+input_file: /tmp/vector_630424rit1_RGB_lc_uyc0kbzt/630424rit1_RGB_lc.tif
+output_file: /tmp/vector_630424rit1_RGB_lc_uyc0kbzt/630424rit1_RGB_lc.gpkg
+
+sieve_pixels: 25             # pixels
+simplify_tolerance: 1.0      # map units (eg, meters)
+
+save_debug_raster: false
+
+include_class_label: true
+out_class_column_name: classes
+
+classes:
+  - [0, "building", "#ce7079"]
+  - [1, "greenhouse", "#b9e2d4"]
+  - [2, "swimming pool", "#62d0ff"]
+  - [3, "impervious surface", "#a6aab7"]
+  - [4, "pervious surface", "#987752"]
+  - [5, "bare soil", "#bbb096"]
+  - [6, "water", "#3375a1"]
+  - [7, "snow", "#e9effe"]
+  - [8, "herbaceous vegetation", "#8cd76a"]
+  - [9, "agricultural land", "#decf55"]
+  - [10, "plowed land", "#d0a349"]
+  - [11, "vineyard", "#b08290"]
+  - [12, "deciduous", "#4c9129"]
+  - [13, "coniferous", "#126421"]
+  - [14, "brushwood", "#b5c335"]
+  - [15, "clear cut", "#e48e4d"]
+  - [16, "ligneous", "#222222"]
+  - [17, "mixed", "#222222"]
+  - [18, "other", "#222222"]

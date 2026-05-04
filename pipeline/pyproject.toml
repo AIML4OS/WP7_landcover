@@ -1,0 +1,17 @@
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "landcover_pipeline"
+version ="0.1.0"
+[project.scripts]
+preprocess = "landcover_pipeline.cli.preprocess:main"
+clear_vector = "landcover_pipeline.cli.clear_vector:main"
+download_raster = "landcover_pipeline.cli.download_raster:main"
+download_vector = "landcover_pipeline.cli.download_vector:main"
+inference = "landcover_pipeline.cli.inference:main"
+monitor_inference = "landcover_pipeline.cli.monitor_inference:main"
+monitor_vector = "landcover_pipeline.cli.monitor_vector:main"
+vectorize = "landcover_pipeline.cli.vectorize:main"
+

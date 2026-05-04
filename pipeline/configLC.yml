@@ -1,0 +1,20 @@
+# =====================================================
+# Land Cover Pipeline – Master Configuration (v1)
+# WP7 / AIML4OS
+# =====================================================
+
+project:
+  country: IT
+  region: Veneto2
+  year: 2021
+  description: >
+    Land cover classification based on orthophotos
+    processed within the WP7 land cover pipeline.
+
+model:
+  framework: FLAIR
+  task: land_cover
+  variant: RGB    # RGB | IRG
+
+#output:
+#  bucket: ITS3
