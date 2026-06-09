@@ -173,8 +173,10 @@ def list_objects(bucket, prefix, substring=None):
         print(page)
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            if key.lower().endswith(".tif") and (substring is None or substring in key):
-                yield f"s3://{bucket}/{key}"
+            #if key.lower().endswith(".tif") and (substring is None or substring in key):
+            #    yield f"s3://{bucket}/{key}"
+            if substring is None or substring in key:
+                yield key       
 
 
 def delete_object_prj(bucket: str, key: str) -> None:
