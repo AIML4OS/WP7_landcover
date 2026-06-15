@@ -31,8 +31,8 @@ def build_tile_footprints(project_id: str) -> gpd.GeoDataFrame:
 
     for key in tqdm(keys, total=len(keys), desc="Reading raster metadata", unit="raster"):
         print(key)
-        #s3_path = f"/vsis3/{bucket}/{key}"
-        s3_path = f"{key}"
+        s3_path = f"/vsis3/{bucket}/{key}"
+        #s3_path = f"{key}"
         print("Trying to open S3 path:", s3_path)
         with rasterio.open(s3_path) as ds:
             print("s3_path",s3_path)
