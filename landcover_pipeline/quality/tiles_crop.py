@@ -28,7 +28,7 @@ def _normalize_tile_id(tile_value: object) -> str:
 
 
 def _load_lucas_points_in_aoi(lucas_csv: Path, aoi_path: Path) -> gpd.GeoDataFrame:
-    lucas = pd.read_csv(lucas_csv)
+    lucas = pd.read_csv(lucas_csv,sep="[,;]")
     aoi = gpd.read_file(aoi_path)
 
     for c in ["POINT_NUTS0", "POINT_NUTS1", "POINT_NUTS2", "POINT_NUTS3"]:
