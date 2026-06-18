@@ -21,7 +21,7 @@ def _config_for_modality(modality: str) -> dict:
             "id_col": "POINT_ID",
             "output_columns": ["POINT_NUTS0", "POINT_NUTS3", "SURVEY_LC1", "SURVEY_LC2"],
             "csv_header": 0,
-            "csv_separator": ",;",
+            "csv_separator": ",|;",
             "input_sheet_name": None,
         }
     if mode == "MASTER":
