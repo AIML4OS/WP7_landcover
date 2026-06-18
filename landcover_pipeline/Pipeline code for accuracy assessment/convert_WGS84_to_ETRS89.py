@@ -80,7 +80,7 @@ def convert_wgs84_to_etrs89(EPSG: str, NUTS2: str, INPUT_FILE: str, modality: st
         set(mandatory_output_columns + cfg["output_columns"])
         - {"EASTING_ETRS89", "NORTHING_ETRS89", "PROJECTION_ETRS89"}
     )
-
+    print("SEP:",cfg["csv_separator"])
     if input_path.suffix.lower() == ".xlsx":
         df = pd.read_excel(
             input_path,
