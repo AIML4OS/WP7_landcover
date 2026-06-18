@@ -21,7 +21,7 @@ def _config_for_modality(modality: str) -> dict:
             "id_col": "POINT_ID",
             "output_columns": ["POINT_NUTS0", "POINT_NUTS3", "SURVEY_LC1", "SURVEY_LC2"],
             "csv_header": 0,
-            "csv_separator": ",",
+            "csv_separator";|: ",",
             "input_sheet_name": None,
         }
     if mode == "MASTER":
@@ -32,7 +32,7 @@ def _config_for_modality(modality: str) -> dict:
             "id_col": "POINT_ID",
             "output_columns": ["NUTS0_21", "NUTS3_21", "STRATUM_LUCAS", "STR18"],
             "csv_header": 0,
-            "csv_separator": ",",
+            "csv_separator";|: ",",
             "input_sheet_name": "Master_web",
         }
     raise ValueError(f"Unsupported modality '{modality}'. Use 'LUCAS' or 'MASTER'.")
@@ -93,6 +93,7 @@ def convert_wgs84_to_etrs89(EPSG: str, NUTS2: str, INPUT_FILE: str, modality: st
             header=cfg["csv_header"],
             delimiter=cfg["csv_separator"],
             usecols=required_input_columns,
+            engine='python'
         )
     else:
         raise ValueError("Unsupported file format. Please provide a .csv or .xlsx file.")
