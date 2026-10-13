@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         default="small",
-        choices=["small", "large"],
+        choices=["small", "large", "flairhub"],
         help="Model namespace suffix used in quality/probability/<crop-size>_<model>.",
     )
     parser.add_argument("--coord-file", required=True, help="Tab-separated coordinates file.")

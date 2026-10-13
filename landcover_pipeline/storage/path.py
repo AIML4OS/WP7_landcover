@@ -35,6 +35,13 @@ def imagery_dir(project_id: str) -> str:
 def master_config_path(project_id: str) -> str:
     return f"{input_root(project_id)}/config_master.yml"
 
+def flairhub_template_path(project_id: str, variant: str) -> str:
+    """
+    Example:
+        IT/veneto/2021/input/template_flairhub_IRG.yml
+    """
+    return f"{input_root(project_id)}/template_flairhub_{variant}.yml"
+
 def footprint_path(project_id: str) -> str:
     return f"{input_root(project_id)}/footprint.gpkg"
 

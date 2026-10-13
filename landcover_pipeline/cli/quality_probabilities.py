@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         default="small",
-        choices=["small", "large"],
+        choices=["small", "large", "flairhub"],
         help="FLAIR model size (default: small).",
     )
     parser.add_argument(

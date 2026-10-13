@@ -5,12 +5,41 @@ from landcover_pipeline.inference.runner import run_inference
 
 from landcover_pipeline.storage.s3 import clear_running
 
+def _parse_bool(value: str) -> bool:
+    lowered = value.strip().lower()
+    if lowered in {"true", "1", "yes", "y"}:
+        return True
+    if lowered in {"false", "0", "no", "n"}:
+        return False
+    raise argparse.ArgumentTypeError("Use true or false")
+
+
+def _int_min(minimum: int):
+    def parse(value: str) -> int:
+        number = int(value)
+        if number < minimum:
+            raise argparse.ArgumentTypeError(f"Must be >= {minimum}")
+        return number
+    return parse
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", required=True)
     parser.add_argument("--model", required=True)
-    
+    parser.add_argument("--use-gpu", type=_parse_bool, default=None,
+                        help="Override use_gpu from the template (true/false)")
+    parser.add_argument("--batch-size", type=_int_min(1), default=None,
+                        help="Override batch_size from the template")
+    parser.add_argument("--num-worker", type=_int_min(0), default=None,
+                        help="Override num_worker from the template")
+
     args = parser.parse_args()
+
+    if args.model != "flairhub" and any(
+        v is not None for v in (args.use_gpu, args.batch_size, args.num_worker)
+    ):
+        parser.error("--use-gpu, --batch-size and --num-worker require --model flairhub")
 
     bucket=None
     bucket = bucket or os.environ.get("S3_BUCKET")
@@ -18,7 +47,14 @@ def main():
         raise EnvironmentError("S3_BUCKET environment variable not set")
     
     clear_running(args.project,bucket,"inference")
-    run_inference(args.project,bucket,args.model)
+    run_inference(
+        args.project,
+        bucket,
+        args.model,
+        use_gpu=args.use_gpu,
+        batch_size=args.batch_size,
+        num_worker=args.num_worker,
+    )
 
 if __name__ == "__main__":
     main()

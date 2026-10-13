@@ -1,5 +1,6 @@
 # inference/runner.py
 from pathlib import Path
+from typing import Optional
 
 from landcover_pipeline.storage.s3 import (
     list_objects,
@@ -13,7 +14,14 @@ from landcover_pipeline.storage.path import (
 from landcover_pipeline.inference.flair import run_flair_single
 
 
-def run_inference(project_id: str, bucket: str, model: str) -> None:
+def run_inference(
+    project_id: str,
+    bucket: str,
+    model: str,
+    use_gpu: Optional[bool] = None,
+    batch_size: Optional[int] = None,
+    num_worker: Optional[int] = None,
+) -> None:
     print(f"▶ Starting inference for project {project_id}")
 
     imagery_prefix = imagery_dir(project_id)
@@ -55,7 +63,10 @@ def run_inference(project_id: str, bucket: str, model: str) -> None:
                 project_id=project_id,
                 input_key=input_key,
                 tile_id=tile_id,
-                model=model
+                model=model,
+                use_gpu=use_gpu,
+                batch_size=batch_size,
+                num_worker=num_worker,
             )
             remove_status(project_id, tile_id,"inference", "running")
             write_status(project_id, tile_id,"inference", "done")

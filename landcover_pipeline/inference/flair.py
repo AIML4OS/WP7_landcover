@@ -9,8 +9,11 @@ from  landcover_pipeline.storage.s3 import upload_file
 import tempfile
 import subprocess
 import os
+from landcover_pipeline.inference.flairhub import run_flairhub_single
 
-def run_flair_single(
+FLAIRHUB_MODEL = "flairhub"
+
+def run_flair1_single(
     project_id: str,
     input_key: str,
     tile_id: str,
@@ -151,3 +154,48 @@ def run_flair_single(
                     f"Upload verification failed for s3://{bucket}/{raster_output_name}"
                 )
             print(f"# 3. upload output raster to:{raster_output_name}")
+
+
+def run_flair_single(
+    project_id: str,
+    input_key: str,
+    tile_id: str,
+    model: str,
+    output_class: str = "argmax",
+    output_s3_key: Optional[str] = None,
+    use_gpu: Optional[bool] = None,
+    batch_size: Optional[int] = None,
+    num_worker: Optional[int] = None,
+) -> None:
+    """
+    Entry point used by the pipeline: the engine is chosen by `model`.
+      - "flairhub"       -> FLAIR-HUB (flairhub_zonal), template on S3
+      - "small" / "large" -> FLAIR-1 (flair-detect), unchanged behaviour
+    use_gpu, batch_size and num_worker apply to FLAIR-HUB only.
+    """
+    if model == FLAIRHUB_MODEL:
+        return run_flairhub_single(
+            project_id,
+            input_key,
+            tile_id,
+            model,
+            output_class=output_class,
+            output_s3_key=output_s3_key,
+            use_gpu=use_gpu,
+            batch_size=batch_size,
+            num_worker=num_worker,
+        )
+
+    if any(v is not None for v in (use_gpu, batch_size, num_worker)):
+        raise ValueError(
+            "use_gpu / batch_size / num_worker are supported only with "
+            f"model='{FLAIRHUB_MODEL}' (got model='{model}')"
+        )
+    return run_flair1_single(
+        project_id,
+        input_key,
+        tile_id,
+        model,
+        output_class=output_class,
+        output_s3_key=output_s3_key,
+    )
