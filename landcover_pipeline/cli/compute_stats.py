@@ -28,6 +28,7 @@ from landcover_pipeline.stats.compute import (
     compute_weighted_counts2,
 )
 from landcover_pipeline.stats.compute2 import compute_weighted_counts_low_memory
+from landcover_pipeline.cli.common import add_run_argument, resolve_project
 
 
 # ============================================================
@@ -72,6 +73,8 @@ def parse_args():
         help="Use low-memory counting path from compute2.py (true/false, default: false).",
     )
 
+    add_run_argument(parser)
+
     return parser.parse_args()
 
 
@@ -82,7 +85,7 @@ def parse_args():
 def main():
 
     args = parse_args()
-    project = args.project.strip("/")
+    project = resolve_project(args.project, args.run)
     resolution = args.resolution
 
     # classes = [

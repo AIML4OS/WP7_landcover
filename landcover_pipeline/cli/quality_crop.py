@@ -1,6 +1,7 @@
 import argparse
 
 from landcover_pipeline.quality.tiles_crop import run_tiles_crop
+from landcover_pipeline.cli.common import add_run_argument, resolve_project
 
 
 def parse_args():
@@ -28,13 +29,14 @@ def parse_args():
         default=600,
         help="Crop size in pixels (default: 600)",
     )
+    add_run_argument(parser)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     summary = run_tiles_crop(
-        project_id=args.project,
+        project_id=resolve_project(args.project, args.run),
         lucas_csv=args.lucas_csv,
         aoi_path=args.aoi,
         crop_size=args.crop_size,

@@ -20,6 +20,50 @@ def project_root(project_id: str) -> str:
 
 
 # ----------------------------
+# Executions
+#
+# A project holds the imagery once (<project>/input/imagery) and any number of
+# executions (<project>/execution/<run>) with their own template, status,
+# output and quality. An execution is addressed with the extended project id
+# <project>/execution/<run>: every stage works on it as on a plain project,
+# only the imagery is always read from the data project.
+# ----------------------------
+
+EXECUTION_DIR = "execution"
+
+
+def execution_project_id(project_id: str, run: Optional[str] = None) -> str:
+    """
+    Example:
+        execution_project_id("IT/veneto/2021", "rgb") -> IT/veneto/2021/execution/rgb
+        execution_project_id("IT/veneto/2021")        -> IT/veneto/2021
+    """
+    root = project_root(project_id)
+    if run is None:
+        return root
+    run = run.strip("/")
+    if not run or "/" in run:
+        raise ValueError(f"Invalid run name: {run!r}")
+    if run_name(root) is not None:
+        raise ValueError(f"{root} is already an execution: do not combine it with a run")
+    return f"{root}/{EXECUTION_DIR}/{run}"
+
+
+def data_project_id(project_id: str) -> str:
+    """Data project of a project or execution id: IT/veneto/2021/execution/rgb -> IT/veneto/2021"""
+    root = project_root(project_id)
+    return root.split(f"/{EXECUTION_DIR}/")[0]
+
+
+def run_name(project_id: str) -> Optional[str]:
+    """Run of an execution id (rgb), None for a plain project id."""
+    root = project_root(project_id)
+    if f"/{EXECUTION_DIR}/" not in root:
+        return None
+    return root.split(f"/{EXECUTION_DIR}/", 1)[1]
+
+
+# ----------------------------
 # INPUT paths
 # ----------------------------
 
@@ -30,7 +74,8 @@ def imagery_name(project_id: str,rgb: Path,model_variant:str) -> str:
     return   f"{rgb.stem}_{model_variant}.tif"
 
 def imagery_dir(project_id: str) -> str:
-    return f"{input_root(project_id)}/imagery/"
+    # imagery always lives in the data project, also for an execution id
+    return f"{input_root(data_project_id(project_id))}/imagery/"
 
 def master_config_path(project_id: str) -> str:
     return f"{input_root(project_id)}/config_master.yml"

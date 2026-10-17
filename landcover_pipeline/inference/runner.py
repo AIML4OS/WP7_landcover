@@ -10,8 +10,10 @@ from landcover_pipeline.storage.s3 import (
 )
 from landcover_pipeline.storage.path import (
     imagery_dir,
+    run_name,
 )
 from landcover_pipeline.inference.flair import run_flair_single
+from landcover_pipeline.inference.bands import skip_reason
 
 
 def run_inference(
@@ -33,6 +35,7 @@ def run_inference(
     
     total = 0
     skipped = 0
+    incompatible = 0
     completed = 0
     failed = 0
 
@@ -43,6 +46,14 @@ def run_inference(
         total += 1
 
         tile_id = Path(input_key).stem
+
+        # --- tile that cannot be read by this run (e.g. no IR band for run irg) ---
+        if run_name(project_id) is not None:
+            reason = skip_reason(project_id, tile_id)
+            if reason:
+                print(f"⏭ Skipping {tile_id}: {reason}")
+                incompatible += 1
+                continue
 
         # --- SKIP logic ---
         if status_exists(project_id, tile_id,"inference", "done"):
@@ -81,5 +92,6 @@ def run_inference(
     print("✔ Inference finished")
     print(f"  Total input files: {total}")
     print(f"  Skipped:           {skipped}")
+    print(f"  Not readable by run: {incompatible}")
     print(f"  Completed:         {completed}")
     print(f"  Failed:            {failed}")

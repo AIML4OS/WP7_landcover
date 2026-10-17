@@ -12,14 +12,14 @@ def clear_stage(stage: str,project_id : str) -> None:
     bucket = get_bucket()
 
     prefix_stat = status_dir(project_id,stage)
-    keys_stat = list_objects(bucket=bucket, prefix=prefix_stat)
+    keys_stat = list(list_objects(bucket=bucket, prefix=prefix_stat))
 
     if stage=="inference":
         prefix_out = raster_output_dir(project_id)
     if stage=="vector":
         prefix_out = vector_output_dir(project_id)
 
-    keys_output_out = list_objects(bucket=bucket, prefix=prefix_out)
+    keys_output_out = list(list_objects(bucket=bucket, prefix=prefix_out))
     
     if not keys_stat:
         print("ℹ No status files found")

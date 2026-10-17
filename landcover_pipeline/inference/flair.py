@@ -10,6 +10,7 @@ import tempfile
 import subprocess
 import os
 from landcover_pipeline.inference.flairhub import run_flairhub_single
+from landcover_pipeline.inference.bands import resolve_bands
 
 FLAIRHUB_MODEL = "flairhub"
 
@@ -58,15 +59,7 @@ def run_flair1_single(
             
             print("# 2. run FLAIR inference")
 
-            bands = None
-            for token in Path(tile_id).stem.split("_"):
-                if token in {"RGB", "IRG"}:
-                    bands = token
-                    break
-            if bands is None:
-                raise ValueError(
-                    f"Unable to infer bands (RGB/IRG) from tile_id='{tile_id}'"
-                )
+            bands, _ = resolve_bands(project_id, tile_id)
 
             if (bands == "IRG") and (model == "small"):
                 ckpt = "../flair-models/flair_cosia_swin-small-irg_upernet_custom.ckpt"

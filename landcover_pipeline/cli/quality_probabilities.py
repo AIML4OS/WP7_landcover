@@ -1,6 +1,9 @@
 import argparse
 
 from landcover_pipeline.quality.probabilities import run_quality_probabilities
+from landcover_pipeline.cli.common import add_run_argument, resolve_project
+from landcover_pipeline.inference.bands import validate_run
+from landcover_pipeline.storage.path import run_name
 
 
 def parse_args():
@@ -30,13 +33,19 @@ def parse_args():
         default=None,
         help="If set, process a random sample of N missing crop tiles.",
     )
-    return parser.parse_args()
+    add_run_argument(parser)
+    args = parser.parse_args()
+    try:
+        validate_run(args.model, run_name(resolve_project(args.project, args.run)))
+    except ValueError as exc:
+        parser.error(str(exc))
+    return args
 
 
 def main():
     args = parse_args()
     summary = run_quality_probabilities(
-        project_id=args.project,
+        project_id=resolve_project(args.project, args.run),
         crop_size=args.crop_size,
         model=args.model,
         nsample=args.nsample,

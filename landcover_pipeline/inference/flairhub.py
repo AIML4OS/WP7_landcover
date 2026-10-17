@@ -6,6 +6,7 @@ from ruamel.yaml import YAML
 from landcover_pipeline.template.yml_config import update_yaml_config
 from landcover_pipeline.storage.s3 import download_file, get_bucket, object_exists, upload_file
 from landcover_pipeline.storage.path import raster_output_fullname, flairhub_template_path
+from landcover_pipeline.inference.bands import resolve_bands
 import tempfile
 import subprocess
 
@@ -18,16 +19,6 @@ LOGGED_PARAMS = (
     "img_pixels_detection",
     "output_px_meters",
 )
-
-
-def _variant(tile_id: str) -> str:
-    """Band variant (RGB / IRG) encoded as a token in the tile id."""
-    for token in Path(tile_id).stem.split("_"):
-        if token in {"RGB", "IRG"}:
-            return token
-    raise ValueError(
-        f"Unable to infer bands (RGB/IRG) from tile_id='{tile_id}'"
-    )
 
 
 def _load_yaml(path) -> dict:
@@ -73,13 +64,16 @@ def run_flairhub_single(
     """
     Runs FLAIR-HUB on a single input raster.
 
-    The run configuration is the project template stored on S3
-    (<project>/input/template_flairhub_<RGB|IRG>.yml, variant taken from the
-    tile id). Only paths and output type are written by the code; use_gpu,
-    batch_size and num_worker override the template when given.
+    The run configuration is the template stored on S3 in the project
+    (<project>/input/template_flairhub_<RGB|IRG>.yml). With an execution
+    project id (<project>/execution/<rgb|irg>) the run decides the bands and
+    the code sets the channels of the input modality ([1,2,3] or [4,1,2]);
+    with a plain project the variant comes from the tile id and the channels
+    stay those of the template. Paths and output type are written by the code;
+    use_gpu, batch_size and num_worker override the template when given.
     `model` is kept as a label only.
     """
-    variant = _variant(tile_id)
+    variant, channels = resolve_bands(project_id, tile_id)
     output_type = {"argmax": "argmax", "prob": "class_prob"}[output_class]
 
     bucket = get_bucket()
@@ -117,13 +111,23 @@ def run_flairhub_single(
 
             print("# 2. run FLAIR-HUB inference")
 
-            modality = _input_modality(_load_yaml(local_template))
+            template = _load_yaml(local_template)
+            modality = _input_modality(template)
+
+            modality_cfg = {"input_img_path": str(local_input)}
+            if channels is not None:
+                if "channels" not in (template["modalities"].get(modality) or {}):
+                    raise ValueError(
+                        f"Template modality {modality} has no 'channels' key: "
+                        f"add it (the run sets it to {channels})"
+                    )
+                modality_cfg["channels"] = channels
 
             modify_yml = {
                 "output_name": tile_id,
                 "output_path": str(local_outdir),
                 "output_type": output_type,
-                "modalities": {modality: {"input_img_path": str(local_input)}},
+                "modalities": {modality: modality_cfg},
             }
             runtime = {
                 "use_gpu": use_gpu,
@@ -137,6 +141,7 @@ def run_flairhub_single(
 
             effective = _load_yaml(conf_file)
             print("config:", {k: effective.get(k) for k in LOGGED_PARAMS})
+            print("bands:", variant, "channels:", effective["modalities"][modality].get("channels"))
 
             subprocess.run(["flairhub_zonal", "--config", str(conf_file)], check=True)
 

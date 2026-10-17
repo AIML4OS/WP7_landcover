@@ -1,0 +1,383 @@
+diff --git a/landcover_pipeline/cli/inference.py b/landcover_pipeline/cli/inference.py
+index 33b9151..a61de5f 100644
+--- a/landcover_pipeline/cli/inference.py
++++ b/landcover_pipeline/cli/inference.py
+@@ -5,20 +5,56 @@ from landcover_pipeline.inference.runner import run_inference
+ 
+ from landcover_pipeline.storage.s3 import clear_running
+ 
++def _parse_bool(value: str) -> bool:
++    lowered = value.strip().lower()
++    if lowered in {"true", "1", "yes", "y"}:
++        return True
++    if lowered in {"false", "0", "no", "n"}:
++        return False
++    raise argparse.ArgumentTypeError("Use true or false")
++
++
++def _int_min(minimum: int):
++    def parse(value: str) -> int:
++        number = int(value)
++        if number < minimum:
++            raise argparse.ArgumentTypeError(f"Must be >= {minimum}")
++        return number
++    return parse
++
++
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--project", required=True)
+     parser.add_argument("--model", required=True)
+-    
++    parser.add_argument("--use-gpu", type=_parse_bool, default=None,
++                        help="Override use_gpu from the template (true/false)")
++    parser.add_argument("--batch-size", type=_int_min(1), default=None,
++                        help="Override batch_size from the template")
++    parser.add_argument("--num-worker", type=_int_min(0), default=None,
++                        help="Override num_worker from the template")
++
+     args = parser.parse_args()
+ 
++    if args.model != "flairhub" and any(
++        v is not None for v in (args.use_gpu, args.batch_size, args.num_worker)
++    ):
++        parser.error("--use-gpu, --batch-size and --num-worker require --model flairhub")
++
+     bucket=None
+     bucket = bucket or os.environ.get("S3_BUCKET")
+     if not bucket:
+         raise EnvironmentError("S3_BUCKET environment variable not set")
+     
+     clear_running(args.project,bucket,"inference")
+-    run_inference(args.project,bucket,args.model)
++    run_inference(
++        args.project,
++        bucket,
++        args.model,
++        use_gpu=args.use_gpu,
++        batch_size=args.batch_size,
++        num_worker=args.num_worker,
++    )
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/landcover_pipeline/cli/quality_extract_predictions.py b/landcover_pipeline/cli/quality_extract_predictions.py
+index 08b2a80..55792df 100644
+--- a/landcover_pipeline/cli/quality_extract_predictions.py
++++ b/landcover_pipeline/cli/quality_extract_predictions.py
+@@ -29,7 +29,7 @@ def parse_args():
+     parser.add_argument(
+         "--model",
+         default="small",
+-        choices=["small", "large"],
++        choices=["small", "large", "flairhub"],
+         help="Model namespace suffix used in quality/probability/<crop-size>_<model>.",
+     )
+     parser.add_argument("--coord-file", required=True, help="Tab-separated coordinates file.")
+diff --git a/landcover_pipeline/cli/quality_probabilities.py b/landcover_pipeline/cli/quality_probabilities.py
+index 0578892..1ad3d97 100644
+--- a/landcover_pipeline/cli/quality_probabilities.py
++++ b/landcover_pipeline/cli/quality_probabilities.py
+@@ -21,7 +21,7 @@ def parse_args():
+     parser.add_argument(
+         "--model",
+         default="small",
+-        choices=["small", "large"],
++        choices=["small", "large", "flairhub"],
+         help="FLAIR model size (default: small).",
+     )
+     parser.add_argument(
+diff --git a/landcover_pipeline/inference/flair.py b/landcover_pipeline/inference/flair.py
+index dcab296..9a3d385 100644
+--- a/landcover_pipeline/inference/flair.py
++++ b/landcover_pipeline/inference/flair.py
+@@ -9,8 +9,11 @@ from  landcover_pipeline.storage.s3 import upload_file
+ import tempfile
+ import subprocess
+ import os
++from landcover_pipeline.inference.flairhub import run_flairhub_single
+ 
+-def run_flair_single(
++FLAIRHUB_MODEL = "flairhub"
++
++def run_flair1_single(
+     project_id: str,
+     input_key: str,
+     tile_id: str,
+@@ -151,3 +154,48 @@ def run_flair_single(
+                     f"Upload verification failed for s3://{bucket}/{raster_output_name}"
+                 )
+             print(f"# 3. upload output raster to:{raster_output_name}")
++
++
++def run_flair_single(
++    project_id: str,
++    input_key: str,
++    tile_id: str,
++    model: str,
++    output_class: str = "argmax",
++    output_s3_key: Optional[str] = None,
++    use_gpu: Optional[bool] = None,
++    batch_size: Optional[int] = None,
++    num_worker: Optional[int] = None,
++) -> None:
++    """
++    Entry point used by the pipeline: the engine is chosen by `model`.
++      - "flairhub"       -> FLAIR-HUB (flairhub_zonal), template on S3
++      - "small" / "large" -> FLAIR-1 (flair-detect), unchanged behaviour
++    use_gpu, batch_size and num_worker apply to FLAIR-HUB only.
++    """
++    if model == FLAIRHUB_MODEL:
++        return run_flairhub_single(
++            project_id,
++            input_key,
++            tile_id,
++            model,
++            output_class=output_class,
++            output_s3_key=output_s3_key,
++            use_gpu=use_gpu,
++            batch_size=batch_size,
++            num_worker=num_worker,
++        )
++
++    if any(v is not None for v in (use_gpu, batch_size, num_worker)):
++        raise ValueError(
++            "use_gpu / batch_size / num_worker are supported only with "
++            f"model='{FLAIRHUB_MODEL}' (got model='{model}')"
++        )
++    return run_flair1_single(
++        project_id,
++        input_key,
++        tile_id,
++        model,
++        output_class=output_class,
++        output_s3_key=output_s3_key,
++    )
+diff --git a/landcover_pipeline/inference/flairhub.py b/landcover_pipeline/inference/flairhub.py
+new file mode 100644
+index 0000000..73c6315
+--- /dev/null
++++ b/landcover_pipeline/inference/flairhub.py
+@@ -0,0 +1,165 @@
++# inference/flairhub.py
++import time
++from pathlib import Path
++from typing import Optional
++from ruamel.yaml import YAML
++from landcover_pipeline.template.yml_config import update_yaml_config
++from landcover_pipeline.storage.s3 import download_file, get_bucket, object_exists, upload_file
++from landcover_pipeline.storage.path import raster_output_fullname, flairhub_template_path
++import tempfile
++import subprocess
++
++# Reported in the log for every tile, so a run can be traced back to its settings.
++LOGGED_PARAMS = (
++    "use_gpu",
++    "batch_size",
++    "num_worker",
++    "margin",
++    "img_pixels_detection",
++    "output_px_meters",
++)
++
++
++def _variant(tile_id: str) -> str:
++    """Band variant (RGB / IRG) encoded as a token in the tile id."""
++    for token in Path(tile_id).stem.split("_"):
++        if token in {"RGB", "IRG"}:
++            return token
++    raise ValueError(
++        f"Unable to infer bands (RGB/IRG) from tile_id='{tile_id}'"
++    )
++
++
++def _load_yaml(path) -> dict:
++    with open(path, "r") as f:
++        return YAML(typ="safe").load(f)
++
++
++def _input_modality(template: dict) -> str:
++    """Name of the single input modality switched on in the template."""
++    inputs = template["modalities"]["inputs"]
++    active = [name for name, on in inputs.items() if on]
++    if len(active) != 1:
++        raise ValueError(
++            f"Template must activate exactly one input modality, found: {active}"
++        )
++    return active[0]
++
++
++def _find_output(out_dir: Path, output_type: str) -> Path:
++    """The single raster written by FLAIR-HUB for the requested output type."""
++    found = [p for p in out_dir.rglob("*.tif") if output_type in p.name]
++    if len(found) != 1:
++        listing = sorted(
++            str(p.relative_to(out_dir)) for p in out_dir.rglob("*") if p.is_file()
++        )
++        raise RuntimeError(
++            f"Expected exactly one '{output_type}' raster in {out_dir}, found: {listing}"
++        )
++    return found[0]
++
++
++def run_flairhub_single(
++    project_id: str,
++    input_key: str,
++    tile_id: str,
++    model: str,
++    output_class: str = "argmax",
++    output_s3_key: Optional[str] = None,
++    use_gpu: Optional[bool] = None,
++    batch_size: Optional[int] = None,
++    num_worker: Optional[int] = None,
++) -> None:
++    """
++    Runs FLAIR-HUB on a single input raster.
++
++    The run configuration is the project template stored on S3
++    (<project>/input/template_flairhub_<RGB|IRG>.yml, variant taken from the
++    tile id). Only paths and output type are written by the code; use_gpu,
++    batch_size and num_worker override the template when given.
++    `model` is kept as a label only.
++    """
++    variant = _variant(tile_id)
++    output_type = {"argmax": "argmax", "prob": "class_prob"}[output_class]
++
++    bucket = get_bucket()
++    template_key = flairhub_template_path(project_id, variant)
++    if not object_exists(bucket, template_key):
++        raise FileNotFoundError(
++            f"FLAIR-HUB template not found: s3://{bucket}/{template_key}"
++        )
++
++    with tempfile.TemporaryDirectory(prefix=f"flair_{tile_id}_") as work_dir:
++        with tempfile.TemporaryDirectory(prefix="flair_out_") as local_outdir:
++            work_dir = Path(work_dir)
++            local_outdir = Path(local_outdir)
++
++            print("project_id", project_id)
++            print("input_key", input_key)
++            print("tile_id", tile_id)
++
++            print("# 1. download input raster and template from S3")
++            local_input = work_dir / f"{tile_id}.tif"
++            local_template = work_dir / "template.yml"
++
++            download_file(
++                bucket=bucket,
++                s3_path=input_key,
++                local_path=str(local_input),
++            )
++            download_file(
++                bucket=bucket,
++                s3_path=template_key,
++                local_path=str(local_template),
++            )
++
++            print(f"✔ downloaded to {local_input}")
++
++            print("# 2. run FLAIR-HUB inference")
++
++            modality = _input_modality(_load_yaml(local_template))
++
++            modify_yml = {
++                "output_name": tile_id,
++                "output_path": str(local_outdir),
++                "output_type": output_type,
++                "modalities": {modality: {"input_img_path": str(local_input)}},
++            }
++            runtime = {
++                "use_gpu": use_gpu,
++                "batch_size": batch_size,
++                "num_worker": num_worker,
++            }
++            modify_yml.update({k: v for k, v in runtime.items() if v is not None})
++
++            conf_file = work_dir / "flairhub_conf.yml"
++            update_yaml_config(str(local_template), str(conf_file), modify_yml)
++
++            effective = _load_yaml(conf_file)
++            print("config:", {k: effective.get(k) for k in LOGGED_PARAMS})
++
++            subprocess.run(["flairhub_zonal", "--config", str(conf_file)], check=True)
++
++            local_file_out = _find_output(local_outdir, output_type)
++
++            if output_s3_key:
++                raster_output_name = output_s3_key
++            elif output_class == "prob":
++                raster_output_name = raster_output_fullname(project_id, tile_id, output_class="prob")
++            else:
++                # default output_class argmax
++                raster_output_name = raster_output_fullname(project_id, tile_id)
++            print("raster_output_name", raster_output_name)
++            upload_file(str(local_file_out), bucket, raster_output_name)
++            # Verify upload completed before returning.
++            uploaded = False
++            for _ in range(3):
++                if object_exists(bucket, raster_output_name):
++                    uploaded = True
++                    break
++                time.sleep(1)
++            if not uploaded:
++                raise RuntimeError(
++                    f"Upload verification failed for s3://{bucket}/{raster_output_name}"
++                )
++            print(f"# 3. upload output raster to:{raster_output_name}")
+diff --git a/landcover_pipeline/inference/runner.py b/landcover_pipeline/inference/runner.py
+index 309b067..f5fec00 100644
+--- a/landcover_pipeline/inference/runner.py
++++ b/landcover_pipeline/inference/runner.py
+@@ -1,5 +1,6 @@
+ # inference/runner.py
+ from pathlib import Path
++from typing import Optional
+ 
+ from landcover_pipeline.storage.s3 import (
+     list_objects,
+@@ -13,7 +14,14 @@ from landcover_pipeline.storage.path import (
+ from landcover_pipeline.inference.flair import run_flair_single
+ 
+ 
+-def run_inference(project_id: str, bucket: str, model: str) -> None:
++def run_inference(
++    project_id: str,
++    bucket: str,
++    model: str,
++    use_gpu: Optional[bool] = None,
++    batch_size: Optional[int] = None,
++    num_worker: Optional[int] = None,
++) -> None:
+     print(f"▶ Starting inference for project {project_id}")
+ 
+     imagery_prefix = imagery_dir(project_id)
+@@ -55,7 +63,10 @@ def run_inference(project_id: str, bucket: str, model: str) -> None:
+                 project_id=project_id,
+                 input_key=input_key,
+                 tile_id=tile_id,
+-                model=model
++                model=model,
++                use_gpu=use_gpu,
++                batch_size=batch_size,
++                num_worker=num_worker,
+             )
+             remove_status(project_id, tile_id,"inference", "running")
+             write_status(project_id, tile_id,"inference", "done")
+diff --git a/landcover_pipeline/storage/path.py b/landcover_pipeline/storage/path.py
+index fdcd446..7896076 100644
+--- a/landcover_pipeline/storage/path.py
++++ b/landcover_pipeline/storage/path.py
+@@ -35,6 +35,13 @@ def imagery_dir(project_id: str) -> str:
+ def master_config_path(project_id: str) -> str:
+     return f"{input_root(project_id)}/config_master.yml"
+ 
++def flairhub_template_path(project_id: str, variant: str) -> str:
++    """
++    Example:
++        IT/veneto/2021/input/template_flairhub_IRG.yml
++    """
++    return f"{input_root(project_id)}/template_flairhub_{variant}.yml"
++
+ def footprint_path(project_id: str) -> str:
+     return f"{input_root(project_id)}/footprint.gpkg"
+ 

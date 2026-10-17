@@ -5,6 +5,7 @@ from pathlib import Path
 
 from landcover_pipeline.download.core import download_outputs
 from landcover_pipeline.storage.path import vector_output_dir
+from landcover_pipeline.cli.common import add_run_argument, resolve_project
 
 
 def main() -> None:
@@ -22,6 +23,8 @@ def main() -> None:
         help="Local output directory",
     )
 
+    add_run_argument(parser)
+
     args = parser.parse_args()
 
     bucket = os.environ.get("S3_BUCKET")
@@ -31,7 +34,7 @@ def main() -> None:
 
     download_outputs(
         bucket=bucket,
-        s3_prefix=vector_output_dir(args.project),
+        s3_prefix=vector_output_dir(resolve_project(args.project, args.run)),
         local_dir=Path(args.output),
         extension=".gpkg",
     )

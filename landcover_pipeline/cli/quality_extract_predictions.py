@@ -4,6 +4,7 @@ from pathlib import Path
 
 from landcover_pipeline.storage.path import quality_probability_dir
 from landcover_pipeline.storage.s3 import get_bucket
+from landcover_pipeline.cli.common import add_run_argument, resolve_project
 
 
 def _load_extract_module():
@@ -42,6 +43,7 @@ def parse_args():
     parser.add_argument("--easting-col", default="EASTING_ETRS89")
     parser.add_argument("--northing-col", default="NORTHING_ETRS89")
     parser.add_argument("--point-id-col", default="POINT_ID")
+    add_run_argument(parser)
     return parser.parse_args()
 
 
@@ -49,7 +51,7 @@ def main():
     args = parse_args()
     module = _load_extract_module()
 
-    project = args.project.strip("/")
+    project = resolve_project(args.project, args.run)
     bucket = get_bucket()
     s3_prefix = quality_probability_dir(project, args.crop_size, model=args.model)
     tif_folder = f"s3://{bucket}/{s3_prefix}"

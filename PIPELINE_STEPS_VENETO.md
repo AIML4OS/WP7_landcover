@@ -29,14 +29,37 @@ $env:S3_BUCKET="ITS3"
 Prepare project inputs and metadata before model execution.
 
 ```powershell
-python -m landcover_pipeline.cli.preprocess --project IT/veneto/2021
+python -m landcover_pipeline.cli.preprocess --project IT/veneto/2021 --rgb "<folder_rgb>" --infrared "<folder_ir>"
 ```
+
+Use `--rgb` alone (3 bands, stored as `*_RGB.tif`), `--rgbi` (R,G,B,IR) or `--irgb` (IR,R,G,B)
+for files that already have 4 bands. See `preprocessing_guide.md`.
+
+## Executions (`--run`)
+Imagery is stored once in the data project `IT/veneto/2021/input/imagery`. Every other stage
+works on an execution, `IT/veneto/2021/execution/<run>/`, with its own template, status, outputs
+and quality. Add `--run <name>` to the stage commands (or pass the extended project id
+`IT/veneto/2021/execution/<name>` as `--project`; the two are equivalent).
+
+For FLAIR-HUB the run is `rgb` (reads R,G,B) or `irg` (reads IR,R,G from the 4-band tiles);
+the template goes in the execution:
+
+```
+IT/veneto/2021/execution/rgb/input/template_flairhub_RGB.yml
+IT/veneto/2021/execution/irg/input/template_flairhub_IRG.yml
+```
+
+Tiles that a run cannot read (an `_RGB` tile with run `irg`) are skipped with a message.
+FLAIR-1 (`small`/`large`) accepts any run name except `irg`. Without `--run` the project is used
+as before.
 
 ## 2) Inference
 Run land-cover model inference on imagery tiles.
 
 ```powershell
 python -m landcover_pipeline.cli.inference --project IT/veneto/2021 --model small
+python -m landcover_pipeline.cli.inference --project IT/veneto/2021 --run rgb --model flairhub
+python -m landcover_pipeline.cli.inference --project IT/veneto/2021 --run irg --model flairhub --use-gpu true --batch-size 4
 ```
 
 ## 3) Vectorization

@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from landcover_pipeline.storage.path import footprint_path, raster_output_dir
 from landcover_pipeline.storage.s3 import get_bucket, list_objects, upload_file
+from landcover_pipeline.cli.common import add_run_argument, resolve_project
 
 def build_tile_footprints(project_id: str) -> gpd.GeoDataFrame:
     """
@@ -63,12 +64,13 @@ def parse_args():
         "--output",
         help="Local output GeoPackage path (default: tile_footprints.gpkg)",
     )
+    add_run_argument(parser)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    project = args.project.strip("/")
+    project = resolve_project(args.project, args.run)
     print(project)
 
     footprints = build_tile_footprints(project)

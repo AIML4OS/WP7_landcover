@@ -4,6 +4,9 @@ import argparse,os
 from landcover_pipeline.inference.runner import run_inference
 
 from landcover_pipeline.storage.s3 import clear_running
+from landcover_pipeline.cli.common import add_run_argument, resolve_project
+from landcover_pipeline.inference.bands import validate_run
+from landcover_pipeline.storage.path import run_name
 
 def _parse_bool(value: str) -> bool:
     lowered = value.strip().lower()
@@ -26,6 +29,7 @@ def _int_min(minimum: int):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", required=True)
+    add_run_argument(parser)
     parser.add_argument("--model", required=True)
     parser.add_argument("--use-gpu", type=_parse_bool, default=None,
                         help="Override use_gpu from the template (true/false)")
@@ -41,14 +45,20 @@ def main():
     ):
         parser.error("--use-gpu, --batch-size and --num-worker require --model flairhub")
 
+    try:
+        project_id = resolve_project(args.project, args.run)
+        validate_run(args.model, run_name(project_id))
+    except ValueError as exc:
+        parser.error(str(exc))
+
     bucket=None
     bucket = bucket or os.environ.get("S3_BUCKET")
     if not bucket:
         raise EnvironmentError("S3_BUCKET environment variable not set")
     
-    clear_running(args.project,bucket,"inference")
+    clear_running(project_id,bucket,"inference")
     run_inference(
-        args.project,
+        project_id,
         bucket,
         args.model,
         use_gpu=args.use_gpu,
