@@ -41,17 +41,21 @@ works on an execution, `IT/veneto/2021/execution/<run>/`, with its own template,
 and quality. Add `--run <name>` to the stage commands (or pass the extended project id
 `IT/veneto/2021/execution/<name>` as `--project`; the two are equivalent).
 
-For FLAIR-HUB the run is `rgb` (reads R,G,B) or `irg` (reads IR,R,G from the 4-band tiles);
-the template goes in the execution:
+For FLAIR-HUB the run name starts with the bands: `rgb` (reads R,G,B) or `irg` (reads IR,R,G
+from the 4-band tiles). An optional label after `_` keeps executions apart, e.g. `rgb_swin` and
+`rgb_convnext`. The template goes in the execution and carries the model weights:
 
 ```
-IT/veneto/2021/execution/rgb/input/template_flairhub_RGB.yml
+IT/veneto/2021/execution/rgb_swin/input/template_flairhub_RGB.yml
+IT/veneto/2021/execution/rgb_convnext/input/template_flairhub_RGB.yml
 IT/veneto/2021/execution/irg/input/template_flairhub_IRG.yml
 ```
 
+Output rasters inherit the run name: `execution/rgb_swin/output/raster/016092w_RGBI_rgb_swin_lc.tif`.
+
 Tiles that a run cannot read (an `_RGB` tile with run `irg`) are skipped with a message.
-FLAIR-1 (`small`/`large`) accepts any run name except `irg`. Without `--run` the project is used
-as before.
+FLAIR-1 (`small`/`large`) accepts any run name except those starting with `irg`. Without `--run`
+the project is used as before (output `<tile>_lc.tif`).
 
 ## 2) Inference
 Run land-cover model inference on imagery tiles.

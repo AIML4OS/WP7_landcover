@@ -122,12 +122,35 @@ def output_root(project_id: str) -> str:
 def raster_output_dir(project_id: str) -> str:
     return f"{output_root(project_id)}/raster"
 
+def raster_output_name(project_id: str, tile_id: str) -> str:
+    """
+    Tile name used for the output raster. In an execution the file inherits
+    the run name, so files of different runs stay distinguishable after download:
+        IT/veneto/2021/execution/rgb_swin, 016092w_RGBI -> 016092w_RGBI_rgb_swin
+        IT/veneto/2021 (no run)                         -> 016092w_RGB
+    """
+    run = run_name(project_id)
+    return f"{tile_id}_{run}" if run else tile_id
+
+
+def tile_id_from_output(project_id: str, name: str) -> str:
+    """Inverse of raster_output_name (output file name or stem -> imagery tile id)."""
+    name = Path(str(name)).stem
+    if name.endswith("_lc"):
+        name = name[:-3]
+    run = run_name(project_id)
+    if run and name.endswith(f"_{run}"):
+        name = name[: -len(run) - 1]
+    return name
+
+
 def raster_output_fullname(project_id: str,tile_id: str,output_class: str="argmax") -> str:    
     outraster=raster_output_dir(project_id)
+    name=raster_output_name(project_id, tile_id)
     if output_class=="prob":
-        return (f"{outraster}/{tile_id}_lc"+"_prob"+".tif")
+        return (f"{outraster}/{name}_lc"+"_prob"+".tif")
     if output_class=="argmax":
-        return (f"{outraster}/{tile_id}_lc.tif")    
+        return (f"{outraster}/{name}_lc.tif")    
 
 def vector_output_dir(project_id: str) -> str:
     return f"{output_root(project_id)}/vector"

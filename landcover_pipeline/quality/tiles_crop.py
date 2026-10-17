@@ -12,6 +12,7 @@ from landcover_pipeline.storage.path import (
     footprint_path,
     imagery_dir,
     quality_work_dir,
+    tile_id_from_output,
 )
 from landcover_pipeline.storage.s3 import (
     download_file,
@@ -20,11 +21,9 @@ from landcover_pipeline.storage.s3 import (
 )
 
 
-def _normalize_tile_id(tile_value: object) -> str:
-    name = Path(str(tile_value)).stem
-    if name.endswith("_lc"):
-        name = name[:-3]
-    return name
+def _normalize_tile_id(tile_value: object, project_id: str = "") -> str:
+    # output raster name -> imagery tile id (also drops the run inherited by the file)
+    return tile_id_from_output(project_id, tile_value)
 
 
 def _load_lucas_points_in_aoi(lucas_csv: Path, aoi_path: Path) -> gpd.GeoDataFrame:
@@ -99,7 +98,7 @@ def run_tiles_crop(
 
         table = joined.copy()
         table["tile_id"] = table["tile"].map(
-            lambda v: _normalize_tile_id(v) if pd.notna(v) else ""
+            lambda v: _normalize_tile_id(v, project) if pd.notna(v) else ""
         )
         table["has_tile"] = table["tile_id"].astype(str).str.len() > 0
 
@@ -114,7 +113,7 @@ def run_tiles_crop(
         )
 
         valid_points = joined.dropna(subset=["tile"]).copy()
-        valid_points["tile_id"] = valid_points["tile"].map(_normalize_tile_id)
+        valid_points["tile_id"] = valid_points["tile"].map(lambda v: _normalize_tile_id(v, project))
 
         saved = 0
         processed_tiles = 0
