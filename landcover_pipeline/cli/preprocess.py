@@ -1,35 +1,35 @@
 """
 CLI entry point for local preprocessing and upload.
 
-Command:
-    preprocess_landcover --config master.yml --input /data/orthophotos/
+Imagery is stored by content, not by model:
+    <tile>_RGB.tif    3 bands  R,G,B
+    <tile>_RGBI.tif   4 bands  R,G,B,IR
+The choice between RGB and IRG reading is made at inference time.
+
+Commands:
+    preprocess --project IT/veneto/2021 --rgb /data/rgb
+    preprocess --project IT/veneto/2021 --rgb /data/rgb --infrared /data/ir
+    preprocess --project IT/veneto/2021 --rgbi /data/rgbi
+    preprocess --project IT/veneto/2021 --irgb /data/irgb
 """
 import os
 import argparse
 import tempfile
 from pathlib import Path
 
-from landcover_pipeline.config.master import (  
-    load_master_config,
-    validate_master_config,
-    build_project_id,
+from landcover_pipeline.preprocessing.prepare_inputs import (
+    plan_jobs,
+    check_job,
+    prepare_job,
 )
 
-from landcover_pipeline.storage.path import  imagery_name
-
-from landcover_pipeline.preprocessing.prepare_inputs import prepare_single_input
-
 from landcover_pipeline.preprocessing.scan import scan_input_directory
-
-
-#from landcover_pipeline.preprocessing.anifest import  append_to_anifest,init_anifest
 
 from landcover_pipeline.preprocessing.upload import (
     upload_imagery
 )
 
-from landcover_pipeline.storage.s3 import check_s3_credentials,skip_file_img
-
+from landcover_pipeline.storage.s3 import check_s3_credentials, skip_file_img
 
 
 def parse_args():
@@ -38,55 +38,82 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--config",
+        "--project",
         required=True,
-        help="Path to master YAML configuration file",
+        help="Project id <country>/<region>/<year>, e.g. IT/veneto/2021",
     )
 
     parser.add_argument(
         "--rgb",
-        required=True,
-        help="Directory containing RGB orthophotos",
+        help="Directory with 3-band R,G,B orthophotos "
+             "(stored as *_RGB.tif, or *_RGBI.tif when --infrared is given)",
+    )
+
+    parser.add_argument(
+        "--rgbi",
+        help="Directory with 4-band R,G,B,IR orthophotos (stored as *_RGBI.tif)",
+    )
+
+    parser.add_argument(
+        "--irgb",
+        help="Directory with 4-band IR,R,G,B orthophotos "
+             "(reordered to R,G,B,IR, stored as *_RGBI.tif)",
     )
 
     parser.add_argument(
         "--infrared",
-        required=False,
-        help="Directory containing infrared orthophotos (optional)",
+        help="Directory with 1-band infrared orthophotos, paired by file name "
+             "with the files in --rgb",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
 
-def main(): 
+    args.project = args.project.strip("/")
+    if not args.project:
+        parser.error("--project must not be empty")
+    if not (args.rgb or args.rgbi or args.irgb):
+        parser.error("give at least one of --rgb, --rgbi, --irgb")
+    if args.infrared and not args.rgb:
+        parser.error("--infrared can only be used together with --rgb")
+
+    return args
+
+
+def main():
     args = parse_args()
 
-    print("▶ Loading master configuration")
-    cfg = load_master_config(args.config)
-    validate_master_config(cfg)
+    project_id = args.project
 
-    project_id = build_project_id(cfg)
-    
-    bucket=None
-    bucket = bucket or os.environ.get("S3_BUCKET")
+    bucket = os.environ.get("S3_BUCKET")
     if not bucket:
         raise EnvironmentError("S3_BUCKET environment variable not set")
 
-    #bucket = cfg["output"]["bucket"]
-    model_variant = cfg["model"]["variant"]
-
     print(f"▶ Project ID: {project_id}")
-    print(f"▶ Model variant: {model_variant}")
     print(f"▶ Target bucket: {bucket}")
 
     print("▶ Checking S3 credentials")
     check_s3_credentials()
 
-    print("▶ Scanning RGB inputs")
-    rgb_files = scan_input_directory(args.rgb)
-    ir_files = None
-    if args.infrared:
-        print("▶ Scanning infrared inputs")
-        ir_files = scan_input_directory(args.infrared)
+    print("▶ Scanning inputs")
+    jobs = plan_jobs(
+        rgb_files=scan_input_directory(args.rgb) if args.rgb else [],
+        rgbi_files=scan_input_directory(args.rgbi) if args.rgbi else [],
+        irgb_files=scan_input_directory(args.irgb) if args.irgb else [],
+        ir_files=scan_input_directory(args.infrared) if args.infrared else None,
+    )
+
+    # Validate every file before processing anything
+    print(f"▶ Checking {len(jobs)} input file(s)")
+    problems = []
+    for job in jobs:
+        try:
+            check_job(job)
+        except ValueError as exc:
+            problems.append(str(exc))
+    if problems:
+        raise SystemExit(
+            "Input check failed, nothing uploaded:\n  " + "\n  ".join(problems)
+        )
 
     print("▶ Starting streaming preprocessing")
 
@@ -95,61 +122,18 @@ def main():
 
         processed_count = 0
 
+        for idx, job in enumerate(jobs):
 
+            print(f"▶ Processing file {idx + 1}/{len(jobs)}: {job.src.name} -> {job.out_name}")
 
-        #anifest_path = tmpdir / "anifest.ndjson"
-
-        ## Header del anifest (una sola volta)
-        #init_anifest(
-        #    anifest_path,
-        #    header={
-        #        "project_id": project_id,
-        #    },
-        #)
-
-
-        # Upload iniziale del anifest (opzionale ma consigliato)
-        #upload_anifest(anifest_path, project_id, bucket)
-
-
-        for idx, rgb in enumerate(rgb_files):
-
-            ir = ir_files[idx] if ir_files else None
-
-            print(f"▶ Processing file {idx + 1}/{len(rgb_files)}: {rgb.name}")
-                                
-            prepared_img= tmpdir / Path(imagery_name(project_id,rgb,model_variant) )
-            skip=skip_file_img(project_id,bucket,prepared_img)
-
-            if skip:
+            prepared_img = tmpdir / job.out_name
+            if skip_file_img(project_id, bucket, prepared_img):
                 continue
 
-            
-            prepare_single_input(
-                rgb=rgb,
-                ir=ir,
-                model_variant=model_variant,
-                out_path=prepared_img,
-            )
+            prepare_job(job, prepared_img)
 
             upload_imagery(prepared_img, project_id, bucket)
-
-
-            ## Append al anifest
-            #append_to_anifest(
-            #    anifest_path,
-            #    entry={
-            #        "img_filename": prepared.name,
-            #        "s3_key": s3_key,
-            #        "model_variant": model_variant,
-            #    },
-            #)
-
-            ## Overwrite del anifest in S3 (robusto, resume-friendly)
-            #upload_anifest(anifest_path, project_id, bucket)
-            #with open(anifest_path,"r") as ff:
-            #    for row in ff:
-            #        print(row)
+            prepared_img.unlink(missing_ok=True)   # free disk space
 
             processed_count += 1
 

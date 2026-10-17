@@ -316,3 +316,192 @@ def prepare_single_input(
         raise ValueError(f"Unsupported model variant: {model_variant}")
 
     return out_path
+
+
+# =====================================================================
+# Content-based preparation (no model variant)
+#
+# Imagery is stored in S3 by what it contains, not by the model that will
+# read it:
+#     <tile>_RGB.tif    3 bands  R,G,B
+#     <tile>_RGBI.tif   4 bands  R,G,B,IR   (canonical order)
+# Which bands a model reads (RGB or IRG) is decided at inference time.
+# =====================================================================
+
+from dataclasses import dataclass
+
+# input kind -> (bands read from the source, output content)
+#   rgb  : source has 3 bands R,G,B   (optionally paired with a 1-band IR file)
+#   rgbi : source has 4 bands R,G,B,IR
+#   irgb : source has 4 bands IR,R,G,B  (reordered to R,G,B,IR)
+INPUT_KINDS = ("rgb", "rgbi", "irgb")
+
+_KNOWN_SUFFIXES = ("_RGBI", "_IRGB", "_RGB", "_IRG")
+
+_BAND_ORDER = {          # source band indices (1-based) -> canonical R,G,B(,IR)
+    "rgb": [1, 2, 3],
+    "rgbi": [1, 2, 3, 4],
+    "irgb": [2, 3, 4, 1],
+}
+_EXPECTED_BANDS = {"rgb": 3, "rgbi": 4, "irgb": 4}
+
+
+def tile_stem(path: Path) -> str:
+    """File name without extension and without a known band suffix."""
+    stem = Path(path).stem
+    for suffix in _KNOWN_SUFFIXES:
+        if stem.upper().endswith(suffix):
+            return stem[: -len(suffix)]
+    return stem
+
+
+@dataclass(frozen=True)
+class PreprocessJob:
+    src: Path                 # RGB, RGBI or IRGB source
+    kind: str                 # "rgb" | "rgbi" | "irgb"
+    ir: Optional[Path]        # separate 1-band IR file (kind == "rgb" only)
+
+    @property
+    def stem(self) -> str:
+        return tile_stem(self.src)
+
+    @property
+    def content(self) -> str:
+        """Content of the file that will be stored: "RGB" or "RGBI"."""
+        return "RGB" if self.kind == "rgb" and self.ir is None else "RGBI"
+
+    @property
+    def out_name(self) -> str:
+        return f"{self.stem}_{self.content}.tif"
+
+
+def pair_by_name(rgb_files: List[Path], ir_files: List[Path]) -> List[tuple]:
+    """
+    Pair RGB and IR files by file name (extension and known band suffix
+    ignored, case-insensitive). Any unmatched or duplicated name is an error.
+    """
+    def index(files, label):
+        out, dup = {}, []
+        for f in files:
+            key = tile_stem(f).lower()
+            if key in out:
+                dup.append(f"{out[key]} / {f}")
+            out[key] = f
+        if dup:
+            raise ValueError(f"Duplicate {label} tile names: " + "; ".join(dup))
+        return out
+
+    rgb_idx = index(rgb_files, "RGB")
+    ir_idx = index(ir_files, "infrared")
+
+    only_rgb = sorted(set(rgb_idx) - set(ir_idx))
+    only_ir = sorted(set(ir_idx) - set(rgb_idx))
+    if only_rgb or only_ir:
+        msg = []
+        if only_rgb:
+            msg.append(f"{len(only_rgb)} RGB tile(s) without infrared: {only_rgb[:10]}")
+        if only_ir:
+            msg.append(f"{len(only_ir)} infrared tile(s) without RGB: {only_ir[:10]}")
+        raise ValueError("; ".join(msg))
+
+    return [(rgb_idx[k], ir_idx[k]) for k in sorted(rgb_idx)]
+
+
+def plan_jobs(
+    rgb_files: List[Path] = (),
+    rgbi_files: List[Path] = (),
+    irgb_files: List[Path] = (),
+    ir_files: Optional[List[Path]] = None,
+) -> List[PreprocessJob]:
+    """
+    Build the list of jobs from the scanned folders.
+    Raises ValueError for: no input, --infrared without --rgb, unmatched
+    RGB/IR pairs, or two sources producing the same output file name.
+    """
+    if not (rgb_files or rgbi_files or irgb_files):
+        raise ValueError("No input files: give at least one of rgb, rgbi, irgb")
+    if ir_files and not rgb_files:
+        raise ValueError("Infrared files can only be combined with RGB (3-band) files")
+
+    jobs: List[PreprocessJob] = []
+    if ir_files:
+        jobs += [PreprocessJob(r, "rgb", i) for r, i in pair_by_name(rgb_files, ir_files)]
+    else:
+        jobs += [PreprocessJob(f, "rgb", None) for f in rgb_files]
+    jobs += [PreprocessJob(f, "rgbi", None) for f in rgbi_files]
+    jobs += [PreprocessJob(f, "irgb", None) for f in irgb_files]
+
+    seen = {}
+    for job in jobs:
+        key = job.out_name.lower()
+        if key in seen:
+            raise ValueError(
+                f"Two sources produce the same output {job.out_name}: "
+                f"{seen[key].src} and {job.src}"
+            )
+        seen[key] = job
+    return jobs
+
+
+def check_job(job: PreprocessJob) -> None:
+    """
+    Cheap metadata check (no pixel reading): band count, 8-bit data and,
+    for RGB+IR pairs, same size and georeferencing.
+    """
+    gdal.UseExceptions()
+
+    def open_info(path):
+        ds = gdal.Open(str(path))
+        if ds is None:
+            raise ValueError(f"Unable to open {path}")
+        return ds
+
+    ds = open_info(job.src)
+    expected = _EXPECTED_BANDS[job.kind]
+    if ds.RasterCount != expected:
+        raise ValueError(
+            f"{job.src}: expected {expected} bands for '{job.kind}', "
+            f"found {ds.RasterCount}"
+        )
+    for i in range(1, ds.RasterCount + 1):
+        dtype = gdal.GetDataTypeName(ds.GetRasterBand(i).DataType)
+        if dtype != "Byte":
+            raise ValueError(f"{job.src}: band {i} is {dtype}, 8-bit (Byte) expected")
+
+    if job.ir is not None:
+        ir = open_info(job.ir)
+        if ir.RasterCount != 1:
+            raise ValueError(f"{job.ir}: infrared file must have 1 band, found {ir.RasterCount}")
+        if gdal.GetDataTypeName(ir.GetRasterBand(1).DataType) != "Byte":
+            raise ValueError(f"{job.ir}: infrared band must be 8-bit (Byte)")
+        same_size = (ds.RasterXSize, ds.RasterYSize) == (ir.RasterXSize, ir.RasterYSize)
+        gt_a, gt_b = ds.GetGeoTransform(), ir.GetGeoTransform()
+        same_geo = all(abs(a - b) < 1e-6 for a, b in zip(gt_a, gt_b))
+        if not (same_size and same_geo):
+            raise ValueError(
+                f"{job.src} and {job.ir} differ in size or georeferencing"
+            )
+
+
+def prepare_job(job: PreprocessJob, out_path: Path) -> Path:
+    """
+    Write the GeoTIFF for one job: R,G,B (RGB) or R,G,B,IR (RGBI).
+    """
+    out_path = Path(out_path)
+    if job.ir is not None:
+        merge_rgb_ir(job.src, job.ir, out_path)      # R,G,B + IR -> R,G,B,IR
+    else:
+        select_bands(job.src, _BAND_ORDER[job.kind], out_path)
+
+    # canonical band labels (the source 4th band may be tagged Alpha/Gray/...)
+    labels = [("R", gdal.GCI_RedBand), ("G", gdal.GCI_GreenBand),
+              ("B", gdal.GCI_BlueBand), ("IR", gdal.GCI_GrayIndex)]
+    ds = gdal.Open(str(out_path), gdal.GA_Update)
+    for i in range(1, ds.RasterCount + 1):
+        name, interp = labels[i - 1]
+        band = ds.GetRasterBand(i)
+        band.SetColorInterpretation(interp)
+        band.SetDescription(name)
+    ds.FlushCache()
+    ds = None
+    return out_path

@@ -44,59 +44,51 @@ set S3_BUCKET=<your bucket name>
 
 ---
 
-## 4. Create the Project Configuration File
+## 4. Run Preprocessing
 
-Create a file named `configLC.yml` in the `WP7_landcover` folder:
-
-```yaml
-# =====================================================
-# Land Cover Pipeline – Master Configuration (v1)
-# WP7 / AIML4OS
-# =====================================================
-
-project:
-  country: IT
-  region: Test
-  year: 2021
-  description: >
-    Demo land cover classification based on orthophotos
-    processed within the WP7 land cover pipeline.
-
-model:
-  framework: FLAIR
-  task: land_cover
-  variant: RGB    # RGB | IRG
-```
-
----
-
-## 5. Run Preprocessing
+The project is identified by `<country>/<region>/<year>` (e.g. `IT/veneto/2021`).
+Imagery is stored **by content**, not by model: `<tile>_RGB.tif` (3 bands R,G,B) or
+`<tile>_RGBI.tif` (4 bands R,G,B,IR). Whether a model reads RGB or IRG is decided
+later, at inference time.
 
 ```bash
-python -m landcover_pipeline.cli.preprocess \
-    --config .\configLC.yml \
-    --rgb    "..\path\to\RGB"
+# RGB only
+python -m landcover_pipeline.cli.preprocess --project IT/veneto/2021 --rgb "..\path\to\RGB"
+
+# RGB + separate infrared folder (paired by file name)
+python -m landcover_pipeline.cli.preprocess --project IT/veneto/2021 --rgb "..\RGB" --infrared "..\IR"
+
+# files that already have 4 bands
+python -m landcover_pipeline.cli.preprocess --project IT/veneto/2021 --rgbi "..\RGBI"   # R,G,B,IR
+python -m landcover_pipeline.cli.preprocess --project IT/veneto/2021 --irgb "..\IRGB"   # IR,R,G,B (reordered)
 ```
 
-| Argument      | Description                                      |
-|---------------|--------------------------------------------------|
-| `--config`    | Path to the `configLC.yml` configuration file    |
-| `--rgb`       | Folder containing RGB orthophoto files (`.tif`)  |
-| `--infrared`  | *(Optional)* Folder containing infrared images   |
+| Argument      | Description                                                                 |
+|---------------|-----------------------------------------------------------------------------|
+| `--project`   | Project id `<country>/<region>/<year>`                                      |
+| `--rgb`       | Folder with 3-band R,G,B orthophotos -> `*_RGB.tif` (`*_RGBI.tif` with `--infrared`) |
+| `--rgbi`      | Folder with 4-band R,G,B,IR orthophotos -> `*_RGBI.tif`                     |
+| `--irgb`      | Folder with 4-band IR,R,G,B orthophotos -> `*_RGBI.tif` (bands reordered)   |
+| `--infrared`  | Folder with 1-band infrared orthophotos, paired by file name with `--rgb`   |
+
+At least one of `--rgb`, `--rgbi`, `--irgb` is required and they can be combined.
+Rules checked **before** anything is uploaded: every file must be 8-bit with the expected
+number of bands, every `--rgb` tile must have an infrared file with the same name (and the
+same size and georeferencing), and two sources must not produce the same output name.
 
 ### Expected Output
 
 ```
-▶ Loading master configuration
 ▶ Project ID: IT/Test/2021
-▶ Model variant: RGB
 ▶ Target bucket: ITS3
 ▶ Checking S3 credentials
-▶ Scanning RGB inputs
+▶ Scanning inputs
+▶ Checking 1 input file(s)
 ▶ Starting streaming preprocessing
-▶ Processing file 1/1: 634511.tif
+▶ Processing file 1/1: 634511.tif -> 634511_RGB.tif
 ⬆ Uploading 634511_RGB.tif to IT/Test/2021/input/imagery/634511_RGB.tif
 ✔ Processed and uploaded 1 files
 ```
 
-The script processes **all `.tif` files** found in the RGB folder and uploads them to S3 under the path `<bucket>/<country>/<region>/<year>/input/imagery/`.
+Files are uploaded to `<bucket>/<country>/<region>/<year>/input/imagery/`.
+Tiles already present in S3 are skipped.
